@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WebGazer Pilot (Fariseu)</title>
+
+  <!-- WebGazer CDN -->
+  <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #111; color: #eee; }
+    #topbar {
+      position: sticky; top: 0; z-index: 10;
+      background: rgba(0,0,0,0.85);
+      padding: 10px 12px;
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }
+    button {
+      padding: 8px 10px; border: 0; border-radius: 6px;
+      background: #2e7dff; color: white; cursor: pointer;
+    }
+    button.secondary { background: #444; }
+    button.danger { background: #c62828; }
+    #status { opacity: 0.9; }
+    #wrap { display: flex; justify-content: center; padding: 14px; }
+    #stimulus {
+      max-width: 95vw; max-height: 85vh;
+      object-fit: contain;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px;
+      background: #000;
+    }
+    #gazeDot {
+      position: fixed; left: 0; top: 0; z-index: 9999;
+      width: 12px; height: 12px; border-radius: 50%;
+      background: rgba(0,255,0,0.9);
+      transform: translate(-100px,-100px);
+      pointer-events: none;
+      box-shadow: 0 0 10px rgba(0,255,0,0.7);
+    }
+    #hint { font-size: 12px; opacity: 0.8; }
+    a { color: #8ab4ff; }
+  </style>
+</head>
+
+<body>
+  <div id="topbar">
+    <button id="startBtn">Start</button>
+    <button id="stopBtn" class="danger" disabled>Stop</button>
+    <button id="downloadBtn" class="secondary" disabled>Download CSV</button>
+    <span id="status">Idle.</span>
+    <span id="hint">Tip: good lighting + minimal head movement improves webcam tracking.</span>
+  </div>
+
+  <div id="wrap">
+    <!-- CHANGE THIS filename to your uploaded image -->
+    <img id="stimulus" src="fariseu1.jpg" alt="Fariseu stimulus" />
+  </div>
+
+  <div id="gazeDot"></div>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const gazeDot = document.getElementById('gazeDot');
+    const img = document.getElementById('stimulus');
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+
+    let recording = false;
+    let rows = [];
+    let startTime = null;
+
+    function setStatus(msg) { statusEl.textContent = msg; }
+
+    function getImageRect() {
+      return img.getBoundingClientRect();
+    }
+
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    function screenToImageCoords(x, y) {
+      const r = getImageRect();
+      // Only keep points that land over the visible image
+      const inside = (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom);
+      if (!inside) return null;
+
+      const ix = (x - r.left) / r.width;   // 0..1
+      const iy = (y - r.top) / r.height;   // 0..1
+      return { ix, iy };
+    }
+
+    function downloadCSV() {
+      const header = "t_ms,screen_x,screen_y,img_x_norm,img_y_norm\n";
+      const csv = header + rows.map(r => r.join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "webgazer_fariseu_pilot.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function start() {
+      rows = [];
+      startTime = performance.now();
+      recording = true;
+
+      // Basic WebGazer setup
+      webgazer.setGazeListener((data, elapsedTime) => {
+        if (!recording || !data) return;
+
+        const t = Math.round(performance.now() - startTime);
+        const x = data.x;
+        const y = data.y;
+
+        // Move the visible gaze dot
+        gazeDot.style.transform = `translate(${x - 6}px, ${y - 6}px)`;
+
+        // Map to image-normalized coords (0..1) if inside the image
+        const mapped = screenToImageCoords(x, y);
+        const ix = mapped ? mapped.ix : "";
+        const iy = mapped ? mapped.iy : "";
+
+        rows.push([t, Math.round(x), Math.round(y), ix, iy]);
+      });
+
+      // Turn off video preview to keep the UI clean (optional)
+      webgazer.showVideoPreview(false).showFaceOverlay(false).showFaceFeedbackBox(false);
+
+      // Start WebGazer
+      await webgazer.begin();
+
+      // Optional: a short warm-up period
+      setStatus("Running. Look at the image naturally for 60–120 seconds, then click Stop.");
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      downloadBtn.disabled = true;
+    }
+
+    async function stop() {
+      recording = false;
+      await webgazer.pause();
+      setStatus(`Stopped. Collected ${rows.length} samples. You can download CSV.`);
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      downloadBtn.disabled = rows.length === 0;
+    }
+
+    startBtn.addEventListener('click', () => start().catch(err => {
+      console.error(err);
+      setStatus("Error starting. Check camera permissions and reload the page.");
+    }));
+
+    stopBtn.addEventListener('click', () => stop().catch(err => {
+      console.error(err);
+      setStatus("Error stopping. You can still try Download CSV if samples exist.");
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+      downloadBtn.disabled = rows.length === 0;
+    }));
+
+    downloadBtn.addEventListener('click', downloadCSV);
+
+    // Safety: stop WebGazer when leaving page
+    window.addEventListener("beforeunload", () => {
+      try { webgazer.end(); } catch(e) {}
+    });
+  </script>
+</body>
+</html>
