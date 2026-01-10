@@ -68,8 +68,9 @@
     const statusEl = document.getElementById('status');
     const gazeDot = document.getElementById('gazeDot');
     const img = document.getElementById('stimulus');
-    img.addEventListener("load", () => setStatus("Image loaded OK."));
-    img.addEventListener("error", () => setStatus("❌ Image failed to load: check filename/path for " + img.src));
+        img.addEventListener("load", () => setStatus("✅ Image loaded: " + img.src));
+        img.addEventListener("error", () => setStatus("❌ Image failed to load: " + img.src));
+
 
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
