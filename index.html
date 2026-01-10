@@ -60,6 +60,9 @@
   </div>
 
   <div id="gazeDot"></div>
+  
+
+
 
   <script>
     const statusEl = document.getElementById('status');
@@ -94,7 +97,7 @@
     }
 
     function downloadCSV() {
-      const header = "t_ms,screen_x,screen_y,img_x_norm,img_y_norm\n";
+      const header = "t_ms,screen_x,screen_y,img_x_norm,img_y_norm,img_valid,img_left,img_top,img_width,img_height\n";
       const csv = header + rows.map(r => r.join(",")).join("\n");
       const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
       const url = URL.createObjectURL(blob);
@@ -116,7 +119,7 @@
       webgazer.setGazeListener((data, elapsedTime) => {
         if (!recording || !data) return;
 
-        const t = Math.round(performance.now() - startTime);
+        const t = Math.round(elapsedTime);
         const x = data.x;
         const y = data.y;
 
@@ -125,10 +128,12 @@
 
         // Map to image-normalized coords (0..1) if inside the image
         const mapped = screenToImageCoords(x, y);
-        const ix = mapped ? mapped.ix : "";
-        const iy = mapped ? mapped.iy : "";
+       const r = getImageRect();
+       const ix = mapped ? mapped.ix : "";
+       const iy = mapped ? mapped.iy : "";
+      const valid = mapped ? 1 : 0;
 
-        rows.push([t, Math.round(x), Math.round(y), ix, iy]);
+rows.push([t, Math.round(x), Math.round(y), ix, iy, valid, r.left, r.top, r.width, r.height]);
       });
 
       // Turn off video preview to keep the UI clean (optional)
